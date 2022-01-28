@@ -23,7 +23,7 @@
 #include <QEventLoop>
 #include <QPainter>
 #include <QSyntaxHighlighter>
-
+#include <qregularexpression.h>
 
 class OutputTextEdit::WhitespaceHighlighter : public QSyntaxHighlighter {
 public:
@@ -51,7 +51,7 @@ OutputTextEdit::OutputTextEdit(QWidget* parent)
 
 	m_regionCursor = textCursor();
 	m_regionCursor.movePosition(QTextCursor::Start);
-	m_regionCursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+    m_regionCursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);  // selects the region in blue/like shift+arrows
 	m_entireRegion = true;
 
 	connect(this, &OutputTextEdit::cursorPositionChanged, this, &OutputTextEdit::saveRegionBounds);
@@ -84,6 +84,8 @@ QTextCursor OutputTextEdit::regionBounds() const {
 
 bool OutputTextEdit::findReplace(bool backwards, bool replace, bool matchCase, const QString& searchstr, const QString& replacestr) {
 	clearFocus();
+    QRegularExpression regex = QRegularExpression(searchstr);
+
 	if(searchstr.isEmpty()) {
 		return false;
 	}
@@ -97,35 +99,84 @@ bool OutputTextEdit::findReplace(bool backwards, bool replace, bool matchCase, c
 		flags |= QTextDocument::FindCaseSensitively;
 		cs = Qt::CaseSensitive;
 	}
-
 	QTextCursor regionCursor = regionBounds();
-
 	QTextCursor selCursor = textCursor();
-	if(selCursor.selectedText().compare(searchstr, cs) == 0) {
-		if(replace) {
+
+//    if(selCursor.selectedText().compare(searchstr, cs) == 0) {  // if we are sitting on what we want...
+    if(regex.match(selCursor.selectedText(), flags).hasMatch()) {
+//        qDebug("Existing match try: %d, %d", selCursor.position(), selCursor.anchor());
+        if(replace) {  // then replace it if that's what we want to do
 			selCursor.insertText(replacestr);
 			selCursor.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor, replacestr.length());
 			setTextCursor(selCursor);
 			ensureCursorVisible();
 			return true;
+            // regex replace is having some trouble
 		}
-		if(backwards) {
+        if(backwards) {  // pick the left-most col so we don't match with outselves again
 			selCursor.setPosition(std::min(selCursor.position(), selCursor.anchor()));
-		} else {
+        } else {  // pick the right-most char
 			selCursor.setPosition(std::max(selCursor.position(), selCursor.anchor()));
+//            this causes an issue for .* because we want to match 0+,
+//            so we match 0 on the end of the line and cannot loop around.
+//            Since nothing has a width of 0, we can look from the right of it and go nowhere,
+//            selecting nothing at the end of the line forever (fixed below)
 		}
 	}
+//    qDebug("%s", document()->toRawText().toStdString().c_str());  // could work for extracting text for multi-line regex, but may have lots of overhead
 
-	QTextCursor findcursor = document()->find(searchstr, selCursor, flags);
-	if(findcursor.isNull() || !(findcursor.anchor() >= regionCursor.anchor() && findcursor.position() <= regionCursor.position())) {
+    QTextCursor findcursor = document()->find(regex, selCursor, flags);
+//    QTextCursor findcursor = document()->find(searchstr, selCursor, flags);  // result will have the pointer[result]anchor and possibly the reverse for backwards=true
+//    qDebug("1st try: %d, %d", findcursor.position(), findcursor.anchor());
+//    qDebug("Find cursor: %d, %d", findcursor.position() == findcursor.anchor(), findcursor.atBlockEnd());
+    if(findcursor.position() == findcursor.anchor()) {
+        if(backwards) {
+            if(findcursor.atBlockEnd() && selCursor.anchor() == (findcursor.positionInBlock() + 1)) {
+                // need to see if the selCursor anchor == block start because that would mean we shrunk the right/end to nothing while the left/start stayed in place
+                // selCursor.anchor().atBlockStart() doesn't exist but we know findcursor was atBlockEnd, i.e. the next block going backwards
+                // so previousBlock().getBlockEnd()+1 == start of the next block
+                // If we have no found selection (0 chars), we are in regex mode, but we did move (backwards)
+                // then most likely we were looking for .* or similar and now we are stuck forever
+//                qDebug("Help me! I got stuck going backwards!");
+                selCursor.setPosition(std::max(selCursor.position() - 1, regionCursor.anchor()));
+                findcursor = document()->find(regex, selCursor, flags);
+//                qDebug("1.5 try: %d, %d", findcursor.position(), findcursor.anchor());
+            }
+        }
+        else {
+            if(findcursor.atBlockEnd() && selCursor.atBlockEnd()) {
+                // If we have no found selection (0 chars), we did not move from the end of the block/line,
+                // and we are in regex mode, then most likely we were looking for .* or similar and now we are stuck forever
+//                qDebug("Help me! I got stuck going forwards!");
+                int newPosition = selCursor.position() + 1;  // try to skip over whatever was giving us trouble by going right of the position, going back to the beginning if we need to
+                if(newPosition >= regionCursor.position()) {
+                    selCursor.setPosition(regionCursor.anchor());
+                }
+                else {
+                    selCursor.setPosition(newPosition);
+                }
+
+//                selCursor.setPosition(std::min(selCursor.position() + 1, regionCursor.position()));
+                findcursor = document()->find(regex, selCursor, flags);
+//                qDebug("1.5 try: %d, %d", findcursor.position(), findcursor.anchor());
+            }
+        }
+    }
+
+    if(findcursor.isNull() || !(findcursor.anchor() >= regionCursor.anchor() && findcursor.position() <= regionCursor.position())) {  // if we had a bad result or if we were outside of the document somehow
 		if(backwards) {
-			selCursor.setPosition(regionCursor.position());
+            selCursor.setPosition(regionCursor.position());  // set to the end of the entire text region, similar to the previous setPosition with selCursor
+            // the anchor is the left-most thing, the position is the right-most: we put the anchor down as we go forward
 		} else {
-			selCursor.setPosition(regionCursor.anchor());
+            selCursor.setPosition(regionCursor.anchor());  // set to the beginning of the entire text region, similar to the previous setPosition with selCursor
 		}
-		findcursor = document()->find(searchstr, selCursor, flags);
-		if(findcursor.isNull() || !(findcursor.anchor() >= regionCursor.anchor() && findcursor.position() <= regionCursor.position())) {
-			return false;
+//        qDebug("selCursor: %d, %d", selCursor.position(), selCursor.anchor());
+        findcursor = document()->find(regex, selCursor, flags);
+//        findcursor = document()->find(searchstr, selCursor, flags);  // try searching again
+//        qDebug("2nd try: %d, %d", findcursor.position(), findcursor.anchor());
+        if(findcursor.isNull() || !(findcursor.anchor() >= regionCursor.anchor() && findcursor.position() <= regionCursor.position())) {  // and give up if we still can't find it
+            //selection remains selected when no new match is found: cursor/selection loops around when we can't find anything
+            return false;
 		}
 	}
 	setTextCursor(findcursor);
