@@ -20,7 +20,7 @@
 #ifndef OUTPUTEDITORTEXT_HH
 #define OUTPUTEDITORTEXT_HH
 
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 
 #include "Config.hh"
 #include "MainWindow.hh"

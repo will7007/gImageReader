@@ -34,7 +34,7 @@
 #ifdef Q_OS_LINUX
 #include <sys/prctl.h>
 #endif
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 #define USE_STD_NAMESPACE
 #include <tesseract/baseapi.h>
 #undef USE_STD_NAMESPACE

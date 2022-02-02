@@ -30,7 +30,7 @@
 #include <QPointer>
 #include <QStandardItemModel>
 #include <QSyntaxHighlighter>
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>

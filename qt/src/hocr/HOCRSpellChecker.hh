@@ -20,7 +20,7 @@
 #ifndef HOCRSPELLCHECKER_HH
 #define HOCRSPELLCHECKER_HH
 
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 
 class HOCRSpellChecker : public QtSpell::Checker {
 public:

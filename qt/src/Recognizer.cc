@@ -20,7 +20,7 @@
 #include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 #include <algorithm>
 #define USE_STD_NAMESPACE
 #include <tesseract/baseapi.h>

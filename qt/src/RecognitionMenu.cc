@@ -21,7 +21,7 @@
 #include <QDateTime>
 #include <QMessageBox>
 #include <QMouseEvent>
-#include <QtSpell.hpp>
+#include <QtSpell-qt5/QtSpell.hpp>
 
 #include "ConfigSettings.hh"
 #include "MainWindow.hh"
